@@ -15,8 +15,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     var bird:SKSpriteNode!
     var item:SKSpriteNode!
     
-    var groundTextureHeight:CGFloat!
-    
     // 衝突判定カテゴリー
     let birdCategory: UInt32 = 1 << 0       // 0...00001
     let groundCategory: UInt32 = 1 << 1     // 0...00010
@@ -31,6 +29,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     var itemScoreLabelNode:SKLabelNode!
     var bestScoreLabelNode:SKLabelNode!
     let userDefaults:UserDefaults = UserDefaults.standard
+    
+    // itemの高さ位置を算出するための変数
+    var groundTextureHeight:CGFloat!
     
     // itemScore獲得時の効果音
     let getItemEffect = NSDataAsset(name: "getItemEffect")
@@ -66,6 +67,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // item獲得時の効果音設定
         musicPlayer = try? AVAudioPlayer(data: (getItemEffect?.data)!)
+        musicPlayer?.play()
     }
     
     // 画面をタップした時に呼ばれる
@@ -85,6 +87,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     func didBegin(_ contact: SKPhysicsContact) {
         // ゲームオーバーのときは何もしない
         if scrollNode.speed <= 0 {
+            // ベストスコア更新か確認する
+            updateBestScore(score: score)
             return
         }
         
@@ -95,26 +99,27 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             // スコアの表示更新
             scoreLabelNode.text = "Score:\(score)"
             
-            // ベストスコア更新か確認する
-            var bestScore = userDefaults.integer(forKey: "BEST")
-            if score > bestScore {
-                bestScore = score
-                // ベストスコアの表示更新
-                bestScoreLabelNode.text = "Best Score:\(bestScore)"
-                userDefaults.set(bestScore, forKey: "BEST")
-                userDefaults.synchronize()
-            }
-            if score%2 == 0 {
+            // item表示制御
+            let appearItem = arc4random_uniform(3)
+            if appearItem == 0 {
+                // 33%の確率で表示
                 setupItem()
             }
         } else if (contact.bodyA.categoryBitMask & itemScoreCategory) == itemScoreCategory || (contact.bodyB.categoryBitMask & itemScoreCategory) == itemScoreCategory {
-            musicPlayer?.play() // → これで音が鳴る
+            // 効果音
+            musicPlayer?.play()
+            
+            // スコア用の物体と衝突した
+            print("ScoreUp")
+            score += 1
+            // スコアの表示更新
+            scoreLabelNode.text = "Score:\(score)"
 
             //itemスコア用の物体と衝突
             print("itemScoreUp")
             itemScore += 1
             // itemスコアの表示更新
-            itemScoreLabelNode.text = "itemScore:\(itemScore)"
+            itemScoreLabelNode.text = "(included itemScore:\(itemScore))"
             
             // itemの表示を消す
             // 自身を取り除くアクションを作成
@@ -144,7 +149,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         scoreLabelNode.text = String("Score:\(score)")
         
         itemScore = 0
-        itemScoreLabelNode.text = String("itemScore:\(itemScore)")
+        itemScoreLabelNode.text = String("(included itemScore:\(itemScore))")
+        
+        bestScoreLabelNode.fontColor = UIColor.black
+        bestScoreLabelNode.fontName = "HelveticaNeue-UltraLight"
         
         bird.position = CGPoint(x: self.frame.size.width * 0.2, y:self.frame.size.height * 0.7)
         bird.physicsBody?.velocity = CGVector.zero
@@ -154,9 +162,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         wallNode.removeAllChildren()
 
         item.removeAllChildren()
-        // 地面分を除いた高さを上限として乱数を発生
-//        let random_y = (self.frame.size.height - self.groundTextureHeight) * CGFloat(arc4random_uniform(10))/10.0
-//        itemNode.position = CGPoint(x: self.frame.size.width * 0.5, y: self.groundTextureHeight + CGFloat(random_y))
         
         bird.speed = 1
         scrollNode.speed = 1
@@ -351,7 +356,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // スプライトを作成
         bird = SKSpriteNode(texture: birdTextureA)
-        bird.position = CGPoint(x: self.frame.size.width * 0.2, y:self.frame.size.height * 0.7)
+        bird.position = CGPoint(x: self.frame.size.width * 0.1, y:self.frame.size.height * 0.9)
         
         // 物理演算を設定
         bird.physicsBody = SKPhysicsBody(circleOfRadius: bird.size.height / 2.0)
@@ -422,10 +427,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         itemScore = 0
         itemScoreLabelNode = SKLabelNode()
         itemScoreLabelNode.fontColor = UIColor.black
-        itemScoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 90)
+        itemScoreLabelNode.fontSize = 20
+        itemScoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 85)
         itemScoreLabelNode.zPosition = 100 // 一番手前に表示する
         itemScoreLabelNode.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.left
-        itemScoreLabelNode.text = "itemScore:\(itemScore)"
+        itemScoreLabelNode.text = "(included itemScore:\(itemScore))"
         self.addChild(itemScoreLabelNode)
         
         bestScoreLabelNode = SKLabelNode()
@@ -437,5 +443,27 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let bestScore = userDefaults.integer(forKey: "BEST")
         bestScoreLabelNode.text = "Best Score:\(bestScore)"
         self.addChild(bestScoreLabelNode)
+    }
+    
+    func updateBestScore(score: Int) {
+        // ベストスコア更新か確認する
+        var bestScore = userDefaults.integer(forKey: "BEST")
+        if score > bestScore {
+            bestScore = score
+            // ベストスコアの表示更新
+            bestScoreLabelNode.text = "Best Score:\(bestScore)"
+            bestScoreLabelNode.fontName = "GeezaPro-Bold"   // 太字
+            bestScoreLabelNode.fontColor = UIColor(red: 1, green: 0, blue: 0, alpha: 1.0)   // 赤字
+            // 点滅アニメーション
+            let zeroAlpha:SKAction = SKAction.fadeAlpha(to: 0, duration: 0)
+            let fadeToAlpha1:SKAction = SKAction.fadeAlpha(to: 1.0, duration: 0.5)
+            let fadeIn:SKAction = SKAction.sequence([zeroAlpha, fadeToAlpha1])
+            let flashing = SKAction.repeat(fadeIn, count: 2)
+            bestScoreLabelNode.run(flashing)
+            
+            // DB更新
+            userDefaults.set(bestScore, forKey: "BEST")
+            userDefaults.synchronize()
+        }
     }
 }
